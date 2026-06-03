@@ -26,7 +26,7 @@ MoE-FFN-encoder/
   configs/          # Example configuration files
   distillation/     # Distillation and adaptation losses
   downstream/       # Downstream bag-level feature extraction and MIL training code
-  models/           # Backbone wrappers, MoE-FFN modules, and MIL models
+  models/           # Backbone wrappers, MoE-FFN modules
   scripts/          # Role prototype construction and utility scripts
   trainers/         # Target-domain encoder adaptation training code
   utils/            # Utility functions
@@ -241,7 +241,6 @@ This repository does not include large checkpoints, extracted WSI features, or o
 
 Some experiments may involve private pathology datasets. These datasets cannot be redistributed. For private datasets, this repository provides only the expected input format and running pipeline.
 
-## Citation
 
 
 ## License
