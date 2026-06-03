@@ -25,11 +25,11 @@ Large WSI files, extracted features, model checkpoints, and original foundation 
 MoE-FFN-encoder/
   configs/          # Example configuration files
   distillation/     # Distillation and adaptation losses
-  downstream/       # Downstream WSI-level feature extraction and MIL training code
+  downstream/       # Downstream bag-level feature extraction and MIL training code
   models/           # Backbone wrappers, MoE-FFN modules, and MIL models
   scripts/          # Role prototype construction and utility scripts
   trainers/         # Target-domain encoder adaptation training code
-  utils/            # Metrics, logging, I/O, and utility functions
+  utils/            # Utility functions
   requirements.txt
   README.md
 ```
@@ -51,7 +51,7 @@ conda activate moe_ffn_encoder
 pip install -r requirements.txt
 ```
 
-Additional dependencies may be required for specific foundation models, such as DINOv2, OpenCLIP, UNI, Virchow/Virchow2, or other pathology foundation models. Please download the corresponding backbone weights from their official sources.
+Additional dependencies may be required for specific foundation models, such as DINOv2, OpenCLIP, UNI/UNI2-h, Virchow2, or other pathology foundation models. Please download the corresponding backbone weights from their official sources.
 
 ## 1. Prepare Target Dataset Metadata
 
@@ -102,7 +102,7 @@ After preparing high-confidence candidate CSV files, build role prototypes using
 Example:
 
 ```bash
-python scripts/build_role_prototypes_from_tcga_candidates_virchow2.py \
+python scripts/build_role_prototypes_from_candidates_virchow2.py \
   --role-csv atypical_epithelial_lesion=analysis_outputs/BRACS_role_candidates_3role_filtered/candidate_core_atypical_epithelial_lesion.csv \
   --role-csv benign_or_normal_epithelium=analysis_outputs/BRACS_role_candidates_3role_filtered/candidate_core_benign_or_normal_epithelium.csv \
   --role-csv fibrocollagenous_stroma=analysis_outputs/BRACS_role_candidates_3role_filtered/candidate_core_fibro_adipose_stroma.csv \
@@ -123,7 +123,6 @@ python scripts/build_role_prototypes_from_tcga_candidates_virchow2.py \
 
 The output directory contains the role prototype files used in target-domain encoder adaptation.
 
-Although the script name contains `tcga_candidates`, it accepts general role candidate CSV files and can be used for target-domain candidate patches.
 
 ## 4. Build Target Proposal Pool
 
@@ -132,8 +131,8 @@ Next, build the proposal pool used for target-domain encoder training.
 Example:
 
 ```bash
-python downstream/build_BRACS_proposal_pool.py \
-  --config configs/BRACS_build_fixed_can.yaml
+python downstream/build_target_proposal_pool.py \
+  --config configs/BRACS_build_proposal_pool.yaml
 ```
 
 The proposal pool provides training candidates for target-domain MoE-FFN encoder adaptation. The exact configuration should specify the target dataset metadata, role prototype paths, candidate selection settings, and output paths.
@@ -145,7 +144,7 @@ After building the role prototypes and proposal pool, run target-domain encoder 
 Example:
 
 ```bash
-python trainers/train_parotid_encoder_only.py \
+python trainers/train_target_encoder_only.py \
   --config configs/BRACS_encoder_only.yaml
 ```
 
@@ -186,7 +185,7 @@ python downstream/extract_bag_features.py \
   --source_stage2_layer_2 10 \
   --shared_expert \
   --freeze_backbone_except_moe \
-  --split test \
+  --split train \
   --batch_size 64 \
   --max_patches 1024
 ```
@@ -228,7 +227,7 @@ python downstream/train_abmil.py \
   --seed 37
 ```
 
-The downstream training script reports WSI-level classification metrics such as AUC, accuracy, F1-score, sensitivity, and specificity.
+The downstream training script reports WSI-level classification metrics such as AUC, accuracy, F1, balanced_early_auc.
 
 ## Checkpoints and Pretrained Weights
 
@@ -236,7 +235,7 @@ This repository does not include large checkpoints, extracted WSI features, or o
 
 - Original foundation model weights should be downloaded from their official sources.
 - Lightweight MoE-FFN adapted encoder checkpoints may be released separately.
-- Extracted features for public datasets may be released separately when allowed by the dataset license.
+
 
 ## Notes on Private Data
 
@@ -244,16 +243,6 @@ Some experiments may involve private pathology datasets. These datasets cannot b
 
 ## Citation
 
-If you find this repository useful, please cite our paper:
-
-```bibtex
-@article{your_paper_2026,
-  title={Your Paper Title},
-  author={Your Name and Others},
-  journal={To appear},
-  year={2026}
-}
-```
 
 ## License
 
