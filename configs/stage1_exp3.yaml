@@ -1,0 +1,120 @@
+base_encoder:
+  model_name: "./pretrained_models/dinov2-small"
+  device: cuda
+
+moe_encoder:
+  moe_layers: [-3, -2]
+  num_experts: 3
+  shared_expert: True
+  shared_alpha: 0.05
+
+  routing_strategy: proto_topany
+  top_k: 2
+  min_experts: 1
+  max_experts: 2
+  routing_metric: cosine
+  semi_dot_min_scale: 0.5
+  semi_dot_max_scale: 2.0
+
+  init_threshold: 0.00
+  gate_init_scale: 1.0
+  gate_noise_std: 0.02
+
+  use_routing_proj: False
+  routing_proj_dim: 384
+  routing_proj_hidden_dim: 384
+  routing_proj_dropout: 0.0
+
+  use_cluster_bias: False
+  num_clusters: 6
+  cluster_bias_scale: 0.05
+  background_cluster_ids: [5]
+
+  use_cluster_candidate_mask: False
+  cluster_candidate_k: 2
+  soft_candidate_mask: False
+  candidate_penalty: 1.5
+  
+
+moe_loss:
+  enable: true
+
+  diversity_weight: 0.50
+  load_balance_weight: 0.20
+  coverage_weight: 0.05
+  sparsity_weight: 0.05
+
+  routing_sim_weight: 0.0
+  cluster_weight: 0.00
+
+  target_active_experts: 1.4
+  token_reweight: False
+  token_reweight_min: 0.3
+
+  use_group_guided_routing: False
+  group_guided_weight: 0.05
+
+  num_offline_clusters: 6
+  valid_cluster_ids: [0, 1, 4]
+  background_cluster_ids: [5]
+  group_guided_num_experts: 4
+
+  use_cluster_pull: False
+  cluster_pull_weight: 0.02
+  cluster_pull_layers: [0, 1]
+  cluster_pull_use_cosine: False
+  cluster_pull_only_valid: False
+
+  use_cluster_specialization: False
+  spec_weight: 0.02
+  spec_align_weight: 1.0 #align_loss 的权重
+  spec_margin_weight: 0.5 #margin_loss 的权重
+
+  use_cluster_anchor: False
+  anchor_weight: 0.0
+  cluster_anchor_map:
+    0: 0
+    1: 1
+    
+  use_prototype_specialization: False
+  proto_spec_weight: 0.02
+
+  proto_layer_weights: [1.0, 0.2]   # 第一层强，第二层弱
+
+  proto_main_margin: 0.05
+  #proto_shared_margin: 0.0
+
+  proto_main_weight: 1.0
+  #proto_shared_weight: 0.0
+
+  # ===== rare token reweight =====
+  # rare_token_reweight: true
+  # rare_weight_mode: "hybrid"   # E1: cluster, E3: hybrid
+  # rare_alpha: 0.5               # only for hybrid
+  # rare_gamma: 1.0
+  # rare_min_weight: 0.5
+  # rare_max_weight: 3.0
+
+  # rare_cluster_count: 8
+  # rare_kmeans_iters: 5
+
+  # rare_on_layer9: true
+  # rare_on_layer12: true
+
+  # use_rare_margin_loss: true
+  # rare_margin_weight: 0.001
+  # rare_margin_delta: 0.85
+  # rare_margin_start_epoch: 3
+  # rare_quantile: 0.7
+
+training:
+  lr: 1e-4
+  batch_size: 4
+  num_epochs: 10
+  freeze_encoder: true
+  train_gate: true
+  train_shared_expert: true
+  moe_loss_enable: true
+
+data:
+  max_patches: 512

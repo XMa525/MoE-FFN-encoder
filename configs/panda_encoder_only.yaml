@@ -1,0 +1,143 @@
+seed: 42
+device: cuda
+out_dir: outputs/panda_encoder_only_v4_gate_preserve
+
+train_positive_pool_csv: outputs/panda_proposal_pool_v2/train_positive_proposal_pool.csv
+train_negative_pool_csv: outputs/panda_proposal_pool_v2/train_negative_fixed_candidates.csv
+val_positive_pool_csv: outputs/panda_proposal_pool_v2/val_positive_proposal_pool.csv
+val_negative_pool_csv: outputs/panda_proposal_pool_v2/val_negative_fixed_candidates.csv
+
+split_csv: ../data/PANDA/unpacked/merged_split_with_h5_only_pool150_50.csv
+svs_root: ../data/PANDA/unpacked/train_images
+h5_root: ../data/PANDA/PATCHES/patches
+
+img_size: 224
+train_batch_size: 4
+val_batch_size: 2
+num_workers: 4
+
+patch_batch_size: 128
+
+# 保持较大的 slide 覆盖，不再缩回去
+max_train_slides: 64
+max_val_slides: 24
+balance_train_slides_by_label: true
+balance_val_slides_by_label: true
+
+stage2_full_ckpt: results/stage2_best_model/best_full_rebalancepos_200batch.pth
+
+base_encoder:
+  model_name: "./pretrained_models/dinov2-small"
+  device: cuda
+
+moe_encoder:
+  moe_layers: [-3, -2]
+  num_experts: 4
+  shared_expert: true
+  shared_alpha: 0.05
+
+  routing_strategy: proto_topany
+  top_k: 2
+  min_experts: 1
+  max_experts: 2
+  routing_metric: cosine
+
+  init_threshold: 0.0
+  gate_init_scale: 1.2
+  gate_noise_std: 0.02
+
+  use_patch_guided_routing: false
+  patch_guided_mode: residual
+  patch_context_alpha: 0.3
+  patch_summary_type: local
+  patch_summary_kernel: 5
+
+  use_routing_proj: false
+  routing_proj_dim: 384
+  routing_proj_hidden_dim: 384
+  routing_proj_dropout: 0.0
+
+  use_cluster_bias: false
+  num_clusters: 6
+  cluster_bias_scale: 0.05
+  background_cluster_ids: [5]
+
+  use_cluster_candidate_mask: false
+  cluster_candidate_k: 2
+  soft_candidate_mask: false
+  candidate_penalty: 1.5
+
+role_proto_dir: analysis_outputs/panda_role_proto_v3
+role_tau: 1.0
+use_last_moe_output: true
+
+# 关键：先只训 gate，不训 experts
+train_last_gate: true
+train_last_experts: false
+
+# ---------- optimization ----------
+epochs: 6
+lr: 1.0e-5
+weight_decay: 1.0e-4
+
+# ---------- role-proto margin loss ----------
+# 明显弱化，只做轻量引导
+margin_pos: 0.04
+margin_neg: 0.02
+role_proto_loss_weight: 0.15
+
+proto_tumor_name: cancer
+proto_negative_role_names: ["stroma", "benign_epithelium"]
+
+# ---------- slide proxy loss ----------
+# 极弱，只保留一点 slide-level 方向，不让它主导
+enable_slide_proxy_loss: true
+slide_proxy_loss_weight: 0.002
+slide_proxy_topk: 8
+
+# ---------- preserve ----------
+# 核心增强项：更强保护 backbone 原始判别结构
+preserve_loss_weight: 0.15
+
+context_weight_mode: none
+alpha_tumor_prob: 1.0
+alpha_top1_gap: 1.0
+alpha_context: 1.0
+detach_weight: true
+show_inner_patch_progress: false
+
+# ---------- rank loss ----------
+# 进一步减弱，只保留一点排序方向
+rank_loss_weight: 0.01
+margin_rank: 0.02
+rank_mode: topk_mean
+rank_topk: 8
+
+# ---------- positive support ----------
+# 相比你当前版本略收紧，但不激进
+use_strong_pos_support: true
+allow_pos_support_fallback: true
+min_pos_keep: 4
+
+pos_support_min_tumor_prob: 0.30
+pos_support_min_center_gap: -0.02
+pos_support_min_top1_gap: -1.0e6
+pos_support_min_context_score: -1.0e6
+pos_support_min_neighbor_gap_mean: -0.05
+pos_support_min_neighbor_gap_max: -0.02
+pos_support_min_neighbor_prob_mean: -1.0e6
+pos_support_min_neighbor_prob_max: -1.0e6
+
+pos_fallback_min_tumor_prob: 0.27
+pos_fallback_min_center_gap: -0.05
+pos_fallback_min_top1_gap: -1.0e6
+pos_fallback_min_context_score: -1.0e6
+pos_fallback_min_neighbor_gap_mean: -0.08
+pos_fallback_min_neighbor_gap_max: -0.04
+pos_fallback_min_neighbor_prob_mean: -1.0e6
+pos_fallback_min_neighbor_prob_max: -1.0e6
+
+# ---------- online selection ----------
+# 更保守，减少 noisy patch 对 backbone 的扰动
+online_pos_topk: 16
+online_neg_topk: 4

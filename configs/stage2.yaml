@@ -1,0 +1,170 @@
+base_encoder:
+  model_name: "./pretrained_models/dinov2-small"
+  device: cuda
+
+moe_encoder:
+  moe_layers: [-3, -2]
+  num_experts: 4
+  shared_expert: True
+  shared_alpha: 0.05
+
+  routing_strategy: proto_topany
+  top_k: 2
+  min_experts: 1
+  max_experts: 2
+  routing_metric: cosine
+
+  init_threshold: 0.00
+  gate_init_scale: 1.2
+  gate_noise_std: 0.02
+
+  use_routing_proj: False
+  routing_proj_dim: 384
+  routing_proj_hidden_dim: 384
+  routing_proj_dropout: 0.0
+
+  use_cluster_bias: False
+  num_clusters: 6
+  cluster_bias_scale: 0.05
+  background_cluster_ids: [5]
+
+  use_cluster_candidate_mask: False
+  cluster_candidate_k: 2
+  soft_candidate_mask: False
+  candidate_penalty: 1.5
+  
+
+moe_loss:
+  enable: true
+
+  diversity_weight: 0.50
+  load_balance_weight: 0.20
+  coverage_weight: 0.05
+  sparsity_weight: 0.05
+
+  routing_sim_weight: 0.0
+  cluster_weight: 0.00
+
+  target_active_experts: 1.4
+  token_reweight: False
+  token_reweight_min: 0.3
+
+  use_group_guided_routing: False
+  group_guided_weight: 0.05
+
+  num_offline_clusters: 6
+  valid_cluster_ids: [0, 1, 4]
+  background_cluster_ids: [5]
+  group_guided_num_experts: 4
+
+  use_cluster_specialization: False
+  spec_weight: 0.02
+  spec_align_weight: 1.0 #align_loss 的权重
+  spec_margin_weight: 0.5 #margin_loss 的权重
+
+  use_cluster_anchor: False
+  anchor_weight: 0.0
+  cluster_anchor_map:
+    0: 0
+    1: 1
+    
+  use_prototype_specialization: False
+  proto_spec_weight: 0.02
+
+  proto_layer_weights: [1.0, 0.2]   # 第一层强，第二层弱
+
+  proto_main_margin: 0.05
+  #proto_shared_margin: 0.0
+
+  proto_main_weight: 1.0
+stage2_train:
+  epochs: 3
+  lr: 5e-5
+  weight_decay: 0.05
+  clip_grad_norm: 1.0
+  val_max_batches: 10
+
+  cls_align_weight: 0.02
+  align_weight: 0.10
+
+  proto_sep_weight: 1.0
+  proto_margin: 0.10
+
+  sp_loss_weight: 0.0
+  sp_layers: [-1]
+  sp_use_soft_weight: False
+  sp_min_active_experts: 2
+
+  use_expert_floor: False
+  expert_floor_weight: 0.002
+  expert_floor_tau: 0.03
+  expert_floor_layers: [0]
+
+  cluster_sep_weight: 0.0
+  cluster_margin: 0.10
+
+  intra_compact_weight: 0.0
+
+  routing_stability_weight: 0.01
+  z_loss_weight: 1e-4
+
+  valid_cluster_ids: [0, 1, 4]
+  use_last_moe_output: True
+
+  role_proto_weight: 0.05
+  role_tau: 0.07
+  role_attraction_weight: 1.0
+  role_separation_weight: 0.5
+  role_target_weight: 1.0
+  role_margin: 0.05
+  free_expert_id: 3
+  role_proto_dir: outputs/role_proto_init_layer24
+
+  role_use_conf_mask: True
+  role_conf_thresh: 0.45
+  max_role_tokens_per_batch: 4096
+
+  # use_ambiguous_role_weakening: True
+  # ambiguous_role_name: ambiguous
+  # ambiguous_target_scale: 1.0
+  # ambiguous_attraction_scale: 0.5
+  # ambiguous_separation_scale: 0.0
+  # ambiguous_only_target_ce: False
+
+  role_balance_semantic_sampling: True
+  max_role_tokens_per_expert: 1024
+
+  use_free_expert_floor: False
+  free_expert_floor_weight: 0.0
+  free_expert_floor_tau: 0.03
+
+  use_role_asymmetric_weighting: True
+
+  tumor_role_name: tumor
+  stroma_role_name: stroma
+  ambiguous_role_name: ambiguous
+
+  tumor_target_scale: 1.15
+  tumor_attraction_scale: 1.15
+  tumor_separation_scale: 0.5
+
+  stroma_target_scale: 1.0
+  stroma_attraction_scale: 1.0
+  stroma_separation_scale: 0.5
+
+  ambiguous_target_scale: 0.8
+  ambiguous_attraction_scale: 0.4
+  ambiguous_separation_scale: 0.0
+
+  use_tumor_preference_loss: True
+  tumor_preference_weight: 0.2
+  tumor_pref_margin: 0.08
+  tumor_candidate_min_sim: 0.35
+  tumor_amb_near_margin: 0.15
+
+  use_wsi_bag_loss: False
+  wsi_bag_loss_weight: 0.1
+
+  wsi_topk_ratio: 0.1
+  wsi_topk_min: 4
+  wsi_topk_max: 16

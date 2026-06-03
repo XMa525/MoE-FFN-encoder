@@ -1,0 +1,109 @@
+base_encoder:
+  model_name: "./pretrained_models/dinov2-small"
+  device: cuda
+
+moe_encoder:
+  moe_layers: [-3, -2]
+  num_experts: 4
+  shared_expert: True
+  shared_alpha: 0.05
+
+  routing_strategy: proto_topany
+  top_k: 2
+  min_experts: 1
+  max_experts: 2
+  routing_metric: cosine
+
+  init_threshold: 0.00
+  gate_init_scale: 1.2
+  gate_noise_std: 0.02
+
+  use_routing_proj: False
+  routing_proj_dim: 384
+  routing_proj_hidden_dim: 384
+  routing_proj_dropout: 0.0
+
+  use_cluster_bias: False
+  num_clusters: 6
+  cluster_bias_scale: 0.05
+  background_cluster_ids: [5]
+
+  use_cluster_candidate_mask: False
+  cluster_candidate_k: 2
+  soft_candidate_mask: False
+  candidate_penalty: 1.5
+  
+stage3_train:
+  role_proto_dir: "outputs/role_proto_init_virchow2_layer26_405/3role_v1"
+
+  use_split_csv: true
+  split_csv: "../data/TCGA/tcga_plugin_split.csv"
+  split_col: "split"
+  train_split_value: "train"
+  val_split_value: "val"
+  test_split_value: "test"
+
+  freeze_student: true
+  freeze_proj_l12: true
+  use_last_moe_output: true
+
+  unfreeze_last_moe: true
+  last_moe_drift_weight: 0.10
+  last_moe_drift_type: "mse"
+
+  semantic_expert_ids: [0, 1, 2]
+  free_expert_id: 3
+
+  role_tau: 0.07
+  role_use_conf_mask: true
+  role_conf_thresh: 0.25
+  role_use_margin_mask: false
+  role_margin_conf_thresh: 0.08
+
+  max_role_tokens_per_expert: 64
+  max_role_tokens_per_batch: 0
+
+  role_loss_weight: 1.0
+  proto_anchor_weight: 0.05
+  anti_collapse_weight: 0.30
+  anti_collapse_floors: [0.20, 0.20, 0.20]
+
+  role_attraction_weight: 1.0
+  role_separation_weight: 0.5
+  role_target_weight: 1.0
+  role_margin: 0.05
+
+  use_e0_tumor_purification: true
+  e0_expert_id: 0
+  tumor_role_id: 0
+  necrosis_role_id: 2
+
+  e0_tumor_min_sim: 0.10
+  e0_tumor_min_gap: -0.05
+  e0_tumor_max_gap: 0.20
+  e0_tumor_topk: 128
+  e0_tumor_hard_mining: true
+  e0_use_selected_only: false
+
+  e0_tumor_pair_weight: 0.30
+  e0_tumor_pair_margin: 0.10
+
+  
+
+  lr_proto: 1e-5
+  lr_last_moe: 2e-6
+  weight_decay: 0.0
+  clip_grad_norm: 1.0
+
+  batch_size: 16
+  num_workers: 8
+  epochs: 15
+  num_batches_per_epoch: 100
+  val_ratio: 0.2
+  val_max_batches: 20
+
+  early_stop_patience: 5
+  early_stop_min_delta: 1e-4
+
+  ckpt_dir: "checkpoints/stage3_role_refine_ckpts_v1"
+  project_sampler_cache: "outputs/dataset_cache/tcga_project_indices_stage3.pkl"

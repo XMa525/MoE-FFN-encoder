@@ -1,0 +1,42 @@
+# data
+data/
+*.h5
+*.svs
+*.tif
+*.tiff
+
+# notebooks
+#*.ipynb
+#.ipynb_checkpoints/
+
+# python cache
+__pycache__/
+*.pyc
+
+# env
+.env
+# 忽略权重文件
+*.bin
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+
+*.log
+*.npz
+*.pkl
+
+analysis_outputs/
+outputs/
+downstream/smoketestcode-server-4.112.0-linux-amd64.tar
+*.png
+results/distill/
+# Pretrained model caches
+pretrained_models/
+models--*/
+*.bin
+*.safetensors
+
+# PyTorch / compiler caches
+torchinductor_*/
+.triton/

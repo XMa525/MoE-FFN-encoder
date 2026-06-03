@@ -1,0 +1,162 @@
+seed: 42
+device: cuda
+out_dir: outputs/BRACS_proposal_pool_ablation_exp5
+
+# ---------- score cache ----------
+score_cache_dir: outputs/BRACS_score_cache_ablation_exp5
+reuse_score_cache: true
+
+split_csv: ../data/BRACS/bracs_split_with_h5_only_100_40.csv
+svs_root: ../data/BRACS
+h5_root: ../data/BRACS/PATCHES/patches
+
+img_size: 224
+patch_batch_size: 256
+max_patches_per_slide: 1024
+random_sample_patches: true
+show_inner_patch_progress: false
+
+build_splits: [ "train","val"]
+
+stage2_full_ckpt: distill_checkpoints_stage2_ablation_exp5/best_full.pth
+
+base_encoder:
+  model_name: "./pretrained_models/dinov2-small"
+  device: cuda
+
+moe_encoder:
+  moe_layers: [-3, -2]
+  num_experts: 5
+  shared_expert: true
+  shared_alpha: 0.05
+
+  routing_strategy: proto_topany
+  top_k: 2
+  min_experts: 1
+  max_experts: 2
+  routing_metric: cosine
+
+  init_threshold: 0.0
+  gate_init_scale: 1.2
+  gate_noise_std: 0.02
+
+  use_patch_guided_routing: false
+  patch_guided_mode: residual
+  patch_context_alpha: 0.3
+  patch_summary_type: local
+  patch_summary_kernel: 5
+
+  use_routing_proj: false
+  routing_proj_dim: 384
+  routing_proj_hidden_dim: 384
+  routing_proj_dropout: 0.0
+
+  use_cluster_bias: false
+  num_clusters: 6
+  cluster_bias_scale: 0.05
+  background_cluster_ids: [5]
+
+  use_cluster_candidate_mask: false
+  cluster_candidate_k: 2
+  soft_candidate_mask: false
+  candidate_penalty: 1.5
+
+role_proto_dir: analysis_outputs/BRACS_role_proto_ablation_4role
+role_tau: 0.5
+use_last_moe_output: true
+
+proto_tumor_name: atypical_epithelial_lesion
+proto_negative_role_names: ["benign_or_normal_epithelium", "fibrocollagenous_stroma","adipose_tissue"]
+
+# ---------- neighbor ----------
+neighbor_radius: 512
+neighbor_min_count: 3
+neighbor_k_fallback: 6
+
+# ---------- context score ----------
+pos_ctx_center_weight: 1.0
+pos_ctx_neighbor_weight: 0.5
+pos_ctx_neighbor_max_weight: 0.15
+pos_ctx_prob_weight: 0.30
+pos_ctx_top1_weight: 0.10
+pos_ctx_consistency_weight: 0.15
+
+neg_ctx_center_weight: 1.0
+neg_ctx_neighbor_weight: 1.0
+neg_ctx_isolation_weight: 0.60
+neg_ctx_prob_weight: 0.20
+neg_ctx_top1_weight: 0.10
+
+# ---------- positive proposal pool ----------
+pos_pool_topk_tumor: 48
+pos_pool_topk_context: 48
+pos_pool_max_merged: 96
+
+pos_pool_min_tumor_prob: 0.34
+pos_pool_min_center_gap: 0.00
+pos_pool_min_neighbor_gap_mean: -1000000
+
+pos_pool_tumor_gap_weight: 1.0
+pos_pool_tumor_prob_weight: 0.5
+pos_pool_top1_gap_weight: 0.2
+
+pos_pool_context_weight: 0.7
+pos_pool_neighbor_gap_mean_weight: 0.15
+pos_pool_neighbor_gap_max_weight: 0.1
+
+pos_pool_exclude_role_names: []
+pos_pool_max_exclude_role_prob: 1000000
+pos_pool_max_exclude_role_margin_over_tumor: 1000000
+
+# ---------- negative fixed candidates: safe-negative mode ----------
+neg_topk: 16
+use_conditional_neg_selection: true
+
+# 不再追最高 tumor-like hard negative；只保留 moderate tumor-like false positive
+cond_neg_min_tumor_prob: 0.18
+cond_neg_min_center_gap: -0.30
+cond_neg_max_center_gap: 0.05
+cond_neg_min_top1_gap: -1000000
+
+# 邻域必须不整体 tumor-like，避免 dense lymphoid / dense cellular 区域
+cond_neg_max_neighbor_gap_mean: 0.02
+cond_neg_max_neighbor_gap_max: 0.08
+cond_neg_max_neighbor_prob_mean: 0.38
+cond_neg_max_neighbor_prob_max: 0.42
+
+# isolated 但不能太极端
+cond_neg_min_isolation: -0.10
+cond_neg_max_isolation: 0.25
+cond_neg_max_consistency: 0.18
+
+# role exclusion 
+cond_neg_exclude_role_names: []
+cond_neg_max_exclude_role_prob: 1000000
+cond_neg_max_exclude_role_margin_over_tumor: 1000000
+cond_neg_max_exclude_role_logit: 1000000
+
+# fallback 仍然必须安全，不能退回全体最高 tumor-like patch
+cond_neg_fb_min_tumor_prob: 0.16
+cond_neg_fb_min_center_gap: -0.35
+cond_neg_fb_max_center_gap: 0.08
+cond_neg_fb_max_neighbor_gap_mean: 0.05
+cond_neg_fb_min_isolation: -0.15
+cond_neg_fb_max_isolation: 0.30
+
+cond_neg_keep_exclusion_in_fallback: true
+cond_neg_keep_exclusion_in_last_fallback: true
+
+# 关键：禁止 fallback_level=2 全局回退
+disable_last_global_fallback: true
+allow_empty_negative_selection: true
+
+# score weights：降低中心 tumor-like 奖励，提高邻域/一致性惩罚
+cond_neg_center_weight: 0.5
+cond_neg_prob_weight: 0.1
+cond_neg_isolation_weight: 0.8
+cond_neg_neighbor_mean_penalty: 1.0
+cond_neg_neighbor_max_penalty: 0.8
+cond_neg_consistency_penalty: 0.8
+
+cond_neg_exclude_role_prob_penalty: 0.0
+cond_neg_exclude_role_margin_penalty: 0.0
