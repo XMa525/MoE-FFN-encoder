@@ -5,20 +5,35 @@ import os
 import h5py
 import argparse
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import List, Tuple, Optional
 
 import torch
+import torch.nn as nn
 import openslide
 import pandas as pd
 from PIL import Image
 from tqdm import tqdm
 
+# Optional legacy DINOv2 fallback used by the original extraction script.
+# This keeps old commands such as --encoder_name dinov2_small --dinov2_path ... working
+# without requiring the project-level backbone factory to implement the plain DINO branch.
+try:
+    from transformers import AutoModel, AutoImageProcessor
+except Exception:
+    AutoModel = None
+    AutoImageProcessor = None
+
+
 import sys
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# 统一从 factory 构建 extractor
-from models.encoders.backbone_moe_factory import build_feature_extractor
+# Unified factory for current backbones / MoE adapters.
+try:
+    from models.encoders.backbone_moe_factory import build_feature_extractor as build_factory_feature_extractor
+except Exception as e:
+    build_factory_feature_extractor = None
+    _FACTORY_IMPORT_ERROR = e
 
 
 # =========================================================
@@ -138,6 +153,129 @@ def read_patch_from_wsi(
     x, y = int(coord_xy[0]), int(coord_xy[1])
     patch = slide.read_region((x, y), read_level, (patch_size, patch_size)).convert("RGB")
     return patch
+
+
+
+# =========================================================
+# Legacy plain DINOv2 extractor
+# =========================================================
+class LegacyDINOv2FeatureExtractor(nn.Module):
+    """
+    Plain DINOv2 feature extractor from the old script.
+
+    Output feature format:
+        concat(CLS token, mean patch token) -> [B, 2 * D]
+
+    This branch is useful for old local HuggingFace snapshots, e.g.
+        --encoder_name dinov2_small --dinov2_path ./pretrained_models/dinov2-small
+    """
+
+    def __init__(
+        self,
+        model_name_or_path: str = "facebook/dinov2-small",
+        weight_path: str = "",
+        device: str = "cuda",
+        local_files_only: bool = False,
+    ):
+        super().__init__()
+        if AutoModel is None or AutoImageProcessor is None:
+            raise ImportError(
+                "transformers is required for the legacy DINOv2 extractor. "
+                "Install it with `pip install transformers`."
+            )
+
+        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+
+        self.model = AutoModel.from_pretrained(
+            model_name_or_path,
+            local_files_only=local_files_only,
+        )
+
+        if weight_path:
+            state = torch.load(weight_path, map_location="cpu")
+            if isinstance(state, dict):
+                if "model_state_dict" in state:
+                    state = state["model_state_dict"]
+                elif "state_dict" in state:
+                    state = state["state_dict"]
+                elif "encoder" in state:
+                    state = state["encoder"]
+            cleaned = {}
+            for k, v in state.items():
+                k = k.replace("module.", "")
+                k = k.replace("model.", "")
+                cleaned[k] = v
+            missing, unexpected = self.model.load_state_dict(cleaned, strict=False)
+            print(f"[Legacy DINOv2] loaded weight_path={weight_path}")
+            print(f"[Legacy DINOv2] missing={len(missing)}, unexpected={len(unexpected)}")
+
+        self.model.to(self.device).eval()
+        self.processor = AutoImageProcessor.from_pretrained(
+            model_name_or_path,
+            local_files_only=local_files_only,
+        )
+
+        self.embed_dim = int(self.model.config.hidden_size)
+        self.out_dim = self.embed_dim * 2
+
+        for p in self.parameters():
+            p.requires_grad = False
+
+        print(
+            f"[Legacy DINOv2] model={model_name_or_path}, "
+            f"embed_dim={self.embed_dim}, out_dim={self.out_dim}, "
+            f"local_files_only={local_files_only}"
+        )
+
+    @torch.no_grad()
+    def forward_tokens(self, images: List[Image.Image]) -> torch.Tensor:
+        inputs = self.processor(images=images, return_tensors="pt")
+        pixel_values = inputs["pixel_values"].to(self.device, non_blocking=True)
+        outputs = self.model(pixel_values=pixel_values)
+        tokens = outputs.last_hidden_state
+        return tokens
+
+    @torch.no_grad()
+    def extract_features(self, images: List[Image.Image]) -> torch.Tensor:
+        tokens = self.forward_tokens(images)
+        if tokens.ndim != 3:
+            raise ValueError(
+                f"[Legacy DINOv2] expected tokens [B, N, D], got shape={tuple(tokens.shape)}"
+            )
+        cls = tokens[:, 0, :]
+        patch_mean = tokens[:, 1:, :].mean(dim=1)
+        return torch.cat([cls, patch_mean], dim=-1)
+
+
+def build_extractor(args):
+    """
+    Merge policy:
+    1. Keep the current factory path for all new backbones and MoE adapters.
+    2. Add the old plain-DINO path back as a legacy-compatible branch.
+    """
+    legacy_dino_names = {"dinov2_small", "dinov2_legacy", "dinov2_plain"}
+
+    if args.encoder_name in legacy_dino_names or getattr(args, "use_legacy_dino", False):
+        model_path = getattr(args, "dinov2_path", "") or getattr(args, "dinov2_model_name", "facebook/dinov2-small")
+        if model_path in ("", None):
+            model_path = "facebook/dinov2-small"
+
+        return LegacyDINOv2FeatureExtractor(
+            model_name_or_path=model_path,
+            weight_path=getattr(args, "dinov2_weight", ""),
+            device=args.device,
+            local_files_only=getattr(args, "dinov2_local_files_only", False),
+        )
+
+    if build_factory_feature_extractor is None:
+        raise ImportError(
+            "Cannot import models.encoders.backbone_moe_factory.build_feature_extractor. "
+            "Use --encoder_name dinov2_small for the legacy DINO branch, or fix the factory import. "
+            f"Original import error: {_FACTORY_IMPORT_ERROR}"
+        )
+
+    return build_factory_feature_extractor(args)
+
 
 
 # =========================================================
@@ -280,6 +418,9 @@ def main():
         choices=[
             # 原始 DINOv2 / MoE
             "dinov2",
+            "dinov2_small",      # legacy name from old script
+            "dinov2_legacy",     # explicit legacy plain-DINO branch
+            "dinov2_plain",      # alias for legacy plain-DINO branch
             "dinov2_moe",
             "moe_encoder",
 
@@ -389,6 +530,28 @@ def main():
         help="Optional local DINOv2 weight path",
     )
     parser.add_argument(
+        "--dinov2_path",
+        type=str,
+        default="",
+        help=(
+            "Legacy alias for a local DINOv2 HuggingFace snapshot. "
+            "Used with --encoder_name dinov2_small / dinov2_legacy."
+        ),
+    )
+    parser.add_argument(
+        "--use_legacy_dino",
+        action="store_true",
+        help=(
+            "Force the old plain-DINO extraction branch instead of the project factory. "
+            "Useful when the factory does not implement plain DINOv2."
+        ),
+    )
+    parser.add_argument(
+        "--dinov2_local_files_only",
+        action="store_true",
+        help="Load DINOv2 only from local files in the legacy branch.",
+    )
+    parser.add_argument(
         "--moe_ckpt",
         type=str,
         default="",
@@ -405,6 +568,18 @@ def main():
         type=int,
         default=-1,
         help="DINOv2 hidden layer index if supported",
+    )
+    parser.add_argument(
+        "--moe_use_last_moe_output",
+        action="store_true",
+        help="Legacy compatibility flag for the original MoE encoder.",
+    )
+    parser.add_argument(
+        "--moe_token_source",
+        type=str,
+        default="layer_12",
+        choices=["auto", "last_moe", "layer_12"],
+        help="Legacy compatibility option for original MoE feature extraction.",
     )
 
     # =========================
@@ -498,7 +673,7 @@ def main():
     df = load_slides_csv(args.slides_csv, split=args.split)
     df = make_label_column_if_needed(df)
 
-    extractor = build_feature_extractor(args)
+    extractor = build_extractor(args)
     
 
     if args.shared_alpha_override is not None:
